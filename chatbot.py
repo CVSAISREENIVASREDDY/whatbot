@@ -10,7 +10,7 @@ try:
     genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
     
     # Create the model instance
-    model = genai.GenerativeModel('gemini-pro')
+    model = genai.GenerativeModel('gemini-pro-latest')
     logging.info("Successfully initialized Gemini model using google-generativeai.")
 
 except Exception as e:
