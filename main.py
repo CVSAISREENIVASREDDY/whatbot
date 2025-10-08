@@ -65,3 +65,7 @@ async def receive_message(request: Request):
         print("❌ Error processing message:", e)
 
     return "ok"
+
+@app.get("/")
+async def home():
+    return {"message": "FastAPI is running!"}
