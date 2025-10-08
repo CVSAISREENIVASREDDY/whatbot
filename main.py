@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Request
+from fastapi.responses import PlainTextResponse
 import requests, os, json
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -24,10 +25,16 @@ chain = ConversationChain(llm=llm, memory=memory, prompt=prompt)
 
 @app.get("/webhook")
 async def verify(request: Request):
-    params = request.query_params
-    if params.get("hub.verify_token") == VERIFY_TOKEN:
-        return int(params.get("hub.challenge"))
-    return "Verification failed"
+    mode = request.query_params.get("hub.mode")
+    token = request.query_params.get("hub.verify_token")
+    challenge = request.query_params.get("hub.challenge")
+
+    if mode == "subscribe" and token == VERIFY_TOKEN:
+        print("✅ Webhook verified successfully!")
+        return PlainTextResponse(content=challenge)
+    else:
+        print("❌ Webhook verification failed!")
+        return PlainTextResponse(content="Verification failed", status_code=403)
 
 @app.post("/webhook")
 async def receive_message(request: Request):
@@ -52,6 +59,9 @@ async def receive_message(request: Request):
         }
         requests.post(url, json=payload, headers=headers)
 
+        print(f"💬 Replied to {sender}: {reply}")
+
     except Exception as e:
-        print("Error:", e)
+        print("❌ Error processing message:", e)
+
     return "ok"
