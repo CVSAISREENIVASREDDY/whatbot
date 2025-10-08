@@ -1,71 +1,49 @@
-from fastapi import FastAPI, Request
-from fastapi.responses import PlainTextResponse
-import requests, os, json
+# main.py
+# Load environment variables from .env file
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.chains import ConversationChain
-from langchain.memory import ConversationBufferMemory
-from langchain.prompts import PromptTemplate
-
 load_dotenv()
+import os
+from fastapi import FastAPI, Form, Response
+from twilio.rest import Client
+from chatbot import get_gemini_response
+
+# Initialize FastAPI app
 app = FastAPI()
 
-ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
-PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")
-VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+# Initialize Twilio client
+account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+client = Client(account_sid, auth_token)
+from_whatsapp_number = os.getenv("FROM_WHATSAPP_NUMBER")
 
-# --- LangChain setup ---
-llm = ChatGoogleGenerativeAI(model="gemini-pro", google_api_key=GEMINI_API_KEY)
-memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-prompt = PromptTemplate.from_template(
-    "You are a helpful WhatsApp AI assistant. Use conversation history to respond naturally.\n\n{chat_history}\nUser: {input}\nAI:"
-)
-chain = ConversationChain(llm=llm, memory=memory, prompt=prompt)
-
-@app.get("/webhook")
-async def verify(request: Request):
-    mode = request.query_params.get("hub.mode")
-    token = request.query_params.get("hub.verify_token")
-    challenge = request.query_params.get("hub.challenge")
-
-    if mode == "subscribe" and token == VERIFY_TOKEN:
-        print("✅ Webhook verified successfully!")
-        return PlainTextResponse(content=challenge)
-    else:
-        print("❌ Webhook verification failed!")
-        return PlainTextResponse(content="Verification failed", status_code=403)
-
-@app.post("/webhook")
-async def receive_message(request: Request):
-    data = await request.json()
-    try:
-        message = data['entry'][0]['changes'][0]['value']['messages'][0]['text']['body']
-        sender = data['entry'][0]['changes'][0]['value']['messages'][0]['from']
-
-        # --- LangChain handles the message ---
-        reply = chain.run(message).strip()
-
-        # --- Send reply back via WhatsApp Cloud API ---
-        url = f"https://graph.facebook.com/v19.0/{PHONE_NUMBER_ID}/messages"
-        headers = {
-            "Authorization": f"Bearer {ACCESS_TOKEN}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "messaging_product": "whatsapp",
-            "to": sender,
-            "text": {"body": reply}
-        }
-        requests.post(url, json=payload, headers=headers)
-
-        print(f"💬 Replied to {sender}: {reply}")
-
-    except Exception as e:
-        print("❌ Error processing message:", e)
-
-    return "ok"
 
 @app.get("/")
-async def home():
-    return {"message": "FastAPI is running!"}
+def read_root():
+    return {"Status": "WhatsApp bot is running!"}
+
+
+@app.post("/webhook")
+def webhook(Body: str = Form(), From: str = Form()):
+    """
+    This is the webhook endpoint that receives incoming messages from Twilio.
+    - Body: The text of the incoming message.
+    - From: The user's WhatsApp number (e.g., whatsapp:+919876543210)
+    """
+    print(f"Received message: '{Body}' from {From}")
+
+    # 1. Get the intelligent response from our chatbot logic
+    bot_response = get_gemini_response(Body)
+    print(f"Generated response: '{bot_response}'")
+
+    # 2. Send the response back to the user via Twilio
+    try:
+        client.messages.create(
+            from_=from_whatsapp_number,
+            body=bot_response,
+            to=From
+        )
+    except Exception as e:
+        print(f"Error sending message: {e}")
+
+    # Return an empty response to Twilio to acknowledge receipt
+    return Response(status_code=204)

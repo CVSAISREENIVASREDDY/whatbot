@@ -1,8 +1,6 @@
 fastapi
 uvicorn
-requests
 python-dotenv
-langchain
-langchain-google-genai   # if using Gemini
-# langchain-openai        # if using OpenAI
-google-generativeai 
+google-generativeai
+twilio
+python-multipart
